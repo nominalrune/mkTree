@@ -1536,7 +1536,7 @@ var require_file = __commonJS({
     var path2 = require("path");
     var fs2 = require_fs();
     var mkdir = require_mkdirs();
-    async function createFile(file) {
+    async function createFile2(file) {
       let stats;
       try {
         stats = await fs2.stat(file);
@@ -1581,7 +1581,7 @@ var require_file = __commonJS({
       fs2.writeFileSync(file, "");
     }
     module2.exports = {
-      createFile: u(createFile),
+      createFile: u(createFile2),
       createFileSync
     };
   }
@@ -1815,14 +1815,14 @@ var require_symlink = __commonJS({
 var require_ensure = __commonJS({
   "node_modules/.pnpm/fs-extra@11.3.0/node_modules/fs-extra/lib/ensure/index.js"(exports2, module2) {
     "use strict";
-    var { createFile, createFileSync } = require_file();
+    var { createFile: createFile2, createFileSync } = require_file();
     var { createLink, createLinkSync } = require_link();
     var { createSymlink, createSymlinkSync } = require_symlink();
     module2.exports = {
       // file
-      createFile,
+      createFile: createFile2,
       createFileSync,
-      ensureFile: createFile,
+      ensureFile: createFile2,
       ensureFileSync: createFileSync,
       // link
       createLink,
@@ -15492,31 +15492,32 @@ function listTemplates(dir) {
   const templates = import_fs_extra.default.readdirSync(import_path5.default.join(dir, "templates"));
   return templates.map((t) => import_path5.default.join(dir, "templates", t));
 }
-function createStructure(templates, structure, root = ".") {
+function createStructure(templates, structure, root) {
   structure.forEach((item) => {
-    if (typeof item === "object") {
-      for (const dirName in item) {
-        const dirPath = import_path5.default.join(root, dirName);
-        import_fs_extra.default.ensureDirSync(dirPath);
-        item[dirName] && createStructure(templates, item[dirName], dirPath);
-      }
-    } else {
-      const filePath = import_path5.default.join(root, item);
-      const ext = item.startsWith(".") ? item : import_path5.default.extname(item);
-      const templateExts = templates.map((t) => {
-        const tt = t.split("/").at(-1) ?? "";
-        return tt?.startsWith(".") ? tt : import_path5.default.extname(tt);
-      });
-      if (templateExts.includes(ext)) {
-        const templateIndex = templateExts.indexOf(ext);
-        const templateContent = import_fs_extra.default.readFileSync(templates[templateIndex], "utf8");
-        const fileContent = templateContent.replace("${FILENAME}", import_path5.default.basename(item, ext));
-        import_fs_extra.default.writeFileSync(filePath, fileContent);
-      } else {
-        import_fs_extra.default.ensureFileSync(filePath);
-      }
-    }
+    typeof item === "string" ? createFile(templates, item, root) : createDir(templates, item, root);
   });
+}
+function createDir(templates, dir, root) {
+  for (const dirName in dir) {
+    const dirPath = import_path5.default.join(root, dirName);
+    import_fs_extra.default.ensureDirSync(dirPath);
+    dir[dirName] && createStructure(templates, dir[dirName], dirPath);
+  }
+}
+function createFile(templates, file, root) {
+  const ext = getExt(file);
+  const templateIndex = templates.map(getExt).indexOf(ext);
+  const filePath = import_path5.default.join(root, file);
+  if (templateIndex === -1) {
+    return import_fs_extra.default.ensureFileSync(filePath);
+  }
+  const templateContent = import_fs_extra.default.readFileSync(templates[templateIndex], "utf8");
+  const fileContent = templateContent.replace("${FILENAME}", import_path5.default.basename(file, ext));
+  return import_fs_extra.default.writeFileSync(filePath, fileContent);
+}
+function getExt(filePath) {
+  const fileName = import_path5.default.basename(filePath);
+  return fileName.startsWith(".") ? fileName : import_path5.default.extname(fileName);
 }
 async function main() {
   const argv = await yargs_default(hideBin(process.argv)).option("dir", {
@@ -15524,30 +15525,41 @@ async function main() {
     type: "string",
     description: "Directory to create files",
     default: "."
-  }).argv;
+  }).option("file", {
+    alias: "f",
+    type: "string",
+    description: "YAML file to read"
+  }).help("h").version("1.0.0").argv;
   const targetDir = argv.dir;
   if (!import_fs_extra.default.existsSync(targetDir)) {
     console.log("Invalid directory.");
     return;
   }
+  let structure;
+  if (argv.file && import_fs_extra.default.existsSync(argv.file)) {
+    const fileContent = import_fs_extra.default.readFileSync(argv.file, "utf8");
+    structure = import_yaml.default.parse(fileContent) ?? [];
+  } else {
+    const yamlFiles = listYamlFiles(targetDir);
+    if (yamlFiles.length === 0) {
+      console.log("No YAML files found in the directory.");
+      return;
+    }
+    console.log("Select a YAML file to read:");
+    yamlFiles.forEach((file, index) => {
+      console.log(`${index + 1}. ${file}`);
+    });
+    const choice = import_readline_sync.default.questionInt("Enter the number of the file: ") - 1;
+    if (choice < 0 || choice >= yamlFiles.length) {
+      console.log("Invalid choice.");
+      return;
+    }
+    const yamlFile = yamlFiles[choice];
+    const fileContent = import_fs_extra.default.readFileSync(yamlFile, "utf8");
+    structure = import_yaml.default.parse(fileContent);
+  }
   const templates = listTemplates(targetDir);
-  const yamlFiles = listYamlFiles(targetDir);
-  if (yamlFiles.length === 0) {
-    console.log("No YAML files found in the directory.");
-    return;
-  }
-  console.log("Select a YAML file to read:");
-  yamlFiles.forEach((file, index) => {
-    console.log(`${index + 1}. ${file}`);
-  });
-  const choice = import_readline_sync.default.questionInt("Enter the number of the file: ") - 1;
-  if (choice < 0 || choice >= yamlFiles.length) {
-    console.log("Invalid choice.");
-    return;
-  }
-  const yamlFile = yamlFiles[choice];
-  const fileContent = import_fs_extra.default.readFileSync(yamlFile, "utf8");
-  const structure = import_yaml.default.parse(fileContent);
+  console.log("Creating structure...");
   createStructure(templates, structure, targetDir);
   console.log("Structure created successfully.");
 }
