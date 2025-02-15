@@ -26,8 +26,8 @@ function createStructure(templates: string[], structure: Dir[], root: string = "
             const filePath = path.join(root, item);
             const ext = item.startsWith('.') ? item : path.extname(item);
             const templateExts = templates.map(t => {
-                const tt = t.split('/').at(-1) ?? '';
-                return tt?.startsWith('.') ? tt : path.extname(tt);
+                const file = t.split('/').at(-1) ?? '';
+                return file.startsWith('.') ? file : path.extname(file);
             });
             if (templateExts.includes(ext)) {
                 const templateIndex = templateExts.indexOf(ext);
